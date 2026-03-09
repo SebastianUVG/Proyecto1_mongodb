@@ -179,3 +179,22 @@ class CreateOrderWithOptionalReviewRequest(BaseModel):
     order: OrderCreateRequest
     review: Optional[ReviewCreate] = None
 
+
+# ============ MODELOS PARA OPERACIONES DE ARRAYS (DINÁMICOS) ============
+class AddTagToMenuItemRequest(BaseModel):
+    """Modelo para agregar dinámicamente un tag a un item de menú"""
+    itemId: str = Field(..., description="ID del item de menú")
+    tag: str = Field(..., description="Tag a agregar")
+
+
+class PushToOrderItemsRequest(BaseModel):
+    """Modelo para agregar dinámicamente un item a una orden"""
+    orderId: str = Field(..., description="ID de la orden")
+    newItem: OrderItem = Field(..., description="Nuevo item a agregar")
+
+
+class PullFromOrderItemsRequest(BaseModel):
+    """Modelo para remover dinámicamente items de una orden con condición"""
+    orderId: str = Field(..., description="ID de la orden")
+    condition: Dict[str, Any] = Field(..., description="Condición MongoDB para items a remover (ej: {'quantity': {'$lt': 1}})")
+

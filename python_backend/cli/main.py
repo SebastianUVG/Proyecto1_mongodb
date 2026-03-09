@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -7,6 +8,13 @@ import httpx
 
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
+
+
+def _get_id(obj: dict) -> str | None:
+    """Extrae el ID de un objeto (intenta 'id', luego '_id')"""
+    if obj is None:
+        return None
+    return obj.get("id") or obj.get("_id")
 
 
 def _print_title(title: str) -> None:
@@ -50,16 +58,16 @@ def _run_seed() -> None:
     _print_title("Seed DB (>=50k orders por default)")
     root = Path(__file__).resolve().parents[1]
     script = root / "scripts" / "seed.py"
-    print(f"Running: python3 {script}")
-    subprocess.check_call(["python3", str(script)])
+    print(f"Running: py {script}")
+    subprocess.check_call(["py", str(script)])
 
 
 def _run_explain_report() -> None:
     _print_title("Explain report (executionStats)")
     root = Path(__file__).resolve().parents[1]
     script = root / "scripts" / "explain_report.py"
-    print(f"Running: python3 {script}")
-    subprocess.check_call(["python3", str(script)])
+    print(f"Running: py {script}")
+    subprocess.check_call(["py", str(script)])
 
 
 def main() -> None:
@@ -88,6 +96,18 @@ def main() -> None:
                 "15) Update order status (update one)\n"
                 "16) Bulk update menu item prices (update many)\n"
                 "17) Bulk delete orders by status (delete many)\n"
+                "\n=== DEMOSTRACIONES DE OPERACIONES MONGODB ===\n"
+                "20) Ops Simple: categorías distintas\n"
+                "21) Ops Simple: tags de menú distintos\n"
+                "22) Ops Simple: contar por estado\n"
+                "23) Complejo: rangos de gasto de usuarios ($bucket)\n"
+                "24) Complejo: rendimiento de restaurantes ($facet)\n"
+                "25) Complejo: análisis de items de órdenes\n"
+                "26) Arrays: agregar tag con $addToSet\n"
+                "27) Arrays: agregar item con $push\n"
+                "28) Arrays: remover item con $pull\n"
+                "29) Embebido: órdenes con items enriquecidos\n"
+                "30) Embebido: menú de restaurante agregado\n"
                 "0) Salir\n"
             )
             choice = _prompt("Opción")
@@ -284,6 +304,239 @@ def main() -> None:
                         json={"filter": {"status": status_}},
                     )
                     print(res)
+                    continue
+
+                # ============ MONGODB OPERATIONS DEMOS ============
+                if choice == "20":
+                    res = _get(client, "/analytics/simple/distinct-categories")
+                    print("Categorías distintas de restaurantes:", res)
+                    continue
+
+                if choice == "21":
+                    res = _get(client, "/analytics/simple/distinct-menu-categories")
+                    print("Categorías y tags distintos del menú:", res)
+                    continue
+
+                if choice == "22":
+                    res = _get(client, "/analytics/simple/counts-by-status")
+                    print("Conteo de órdenes por estado:", res)
+                    continue
+
+                if choice == "23":
+                    res = _get(client, "/analytics/complex/user-spending-brackets")
+                    print("Rangos de gasto de usuarios ($bucket):")
+                    print(res[:3] if isinstance(res, list) else res)
+                    continue
+
+                if choice == "24":
+                    res = _get(client, "/analytics/complex/restaurant-performance-analytics")
+                    print("Análisis de desempeño de restaurantes ($facet):")
+                    print(res)
+                    continue
+
+                if choice == "25":
+                    res = _get(client, "/analytics/complex/order-items-analysis")
+                    print("Análisis de items de órdenes (embebidos):")
+                    print(res[:5] if isinstance(res, list) else res)
+                    continue
+
+                if choice == "26":
+                    # Obtener items disponibles
+                    res = _get(client, "/menu-items")
+                    if not isinstance(res, list) or len(res) == 0:
+                        print("No menu items found")
+                        continue
+
+                    # Permitir filtrar por nombre
+                    search = _prompt("Buscar item por nombre (Enter para ver todos)", "").lower()
+                    filtered_items = [
+                        item for item in res if search == "" or search in item.get("name", "").lower()
+                    ]
+
+                    if not filtered_items:
+                        print("No items found matching that search")
+                        continue
+
+                    print(f"\n=== Selecciona un item (mostrando {len(filtered_items[:20])} de {len(filtered_items)}) ===")
+                    for i, item in enumerate(filtered_items[:20]):
+                        print(f"{i}) {item.get('name')} (${item.get('price')})")
+
+                    try:
+                        idx = int(_prompt("Selecciona el número del item"))
+                        if idx < 0 or idx >= len(filtered_items[:20]):
+                            print("Opción inválida")
+                            continue
+                    except ValueError:
+                        print("Debes ingresar un número")
+                        continue
+
+                    selected_item = filtered_items[idx]
+                    item_id = _get_id(selected_item)
+
+                    if not item_id:
+                        print("Error: Could not get item ID")
+                        continue
+
+                    # Pedir el tag
+                    print("\nEjemplos de tags: featured, vegetarian, organic, spicy, bestseller")
+                    tag = _prompt("tag a agregar", "featured")
+
+                    res = _post(
+                        client,
+                        "/analytics/arrays/add-tag-to-menu-item",
+                        json={"itemId": item_id, "tag": tag},
+                    )
+                    print("Agregar tag con $addToSet:", res)
+                    continue
+
+                if choice == "27":
+                    # Obtener órdenes disponibles
+                    try:
+                        res = _get(client, "/orders/enriched/query", params={"skip": 0, "limit": 20})
+                    except Exception as e:
+                        print(f"Error fetching orders: {e}")
+                        continue
+
+                    if not isinstance(res, list) or len(res) == 0:
+                        print("No orders found")
+                        continue
+
+                    print("\n=== Selecciona una orden ===")
+                    for i, order in enumerate(res):
+                        status = order.get('status', '?')
+                        total = order.get('totalAmount', 0)
+                        order_id_preview = _get_id(order)
+                        print(f"{i}) {order_id_preview[:8]}... | Status: {status} | Total: ${total}")
+
+                    try:
+                        idx = int(_prompt("Selecciona el número de la orden"))
+                        if idx < 0 or idx >= len(res):
+                            print("Opción inválida")
+                            continue
+                    except ValueError:
+                        print("Debes ingresar un número")
+                        continue
+
+                    selected_order = res[idx]
+                    order_id = _get_id(selected_order)
+
+                    if not order_id:
+                        print("Error: Could not get order ID")
+                        continue
+
+                    # Pedir datos del nuevo item
+                    print("\n=== Nuevo item a agregar ===")
+                    menu_item_id = _prompt("menuItemId (puedes dejar vacío para demo)", "MENU_ITEM_DEMO")
+                    item_name = _prompt("item name", "Pizza Pepperoni")
+                    try:
+                        quantity = int(_prompt("quantity", "1"))
+                        price = float(_prompt("price", "85.50"))
+                    except ValueError:
+                        print("Error: quantity debe ser número entero y price debe ser número decimal")
+                        continue
+
+                    res = _post(
+                        client,
+                        "/analytics/arrays/push-to-order-items",
+                        json={
+                            "orderId": order_id,
+                            "newItem": {
+                                "menuItemId": menu_item_id,
+                                "name": item_name,
+                                "quantity": quantity,
+                                "price": price,
+                            },
+                        },
+                    )
+                    print("Agregar item con $push:", res)
+                    continue
+
+                if choice == "28":
+                    # Obtener órdenes disponibles
+                    try:
+                        res = _get(client, "/orders/enriched/query", params={"skip": 0, "limit": 20})
+                    except Exception as e:
+                        print(f"Error fetching orders: {e}")
+                        continue
+
+                    if not isinstance(res, list) or len(res) == 0:
+                        print("No orders found")
+                        continue
+
+                    print("\n=== Selecciona una orden ===")
+                    for i, order in enumerate(res):
+                        status = order.get('status', '?')
+                        total = order.get('totalAmount', 0)
+                        order_id_preview = _get_id(order)
+                        print(f"{i}) {order_id_preview[:8]}... | Status: {status} | Total: ${total}")
+
+                    try:
+                        idx = int(_prompt("Selecciona el número de la orden"))
+                        if idx < 0 or idx >= len(res):
+                            print("Opción inválida")
+                            continue
+                    except ValueError:
+                        print("Debes ingresar un número")
+                        continue
+
+                    selected_order = res[idx]
+                    order_id = _get_id(selected_order)
+
+                    if not order_id:
+                        print("Error: Could not get order ID")
+                        continue
+
+                    # Mostrar opciones de condiciones comunes
+                    print("\n=== Selecciona condición para remover items ===")
+                    conditions = [
+                        ("Cantidad < 1", {"quantity": {"$lt": 1}}),
+                        ("Cantidad = 0", {"quantity": 0}),
+                        ("Precio > 100", {"price": {"$gt": 100}}),
+                        ("Precio < 50", {"price": {"$lt": 50}}),
+                        ("Personalizada (JSON)", None),
+                    ]
+
+                    for i, (desc, _) in enumerate(conditions):
+                        print(f"{i}) {desc}")
+
+                    try:
+                        cond_idx = int(_prompt("Selecciona condición", "0"))
+                        if cond_idx < 0 or cond_idx >= len(conditions):
+                            print("Opción inválida")
+                            continue
+                    except ValueError:
+                        print("Debes ingresar un número")
+                        continue
+
+                    if cond_idx == len(conditions) - 1:  # Personalizada
+                        print("Ingresa la condición MongoDB (ej: {\"quantity\": {\"$lt\": 1}})")
+                        condition_str = _prompt("condition (JSON string)")
+                        try:
+                            condition = json.loads(condition_str)
+                        except Exception as e:
+                            print(f"Error parsing JSON condition: {e}")
+                            continue
+                    else:
+                        condition = conditions[cond_idx][1]
+
+                    res = _post(
+                        client,
+                        "/analytics/arrays/pull-from-order-items",
+                        json={"orderId": order_id, "condition": condition},
+                    )
+                    print("Remover item con $pull:", res)
+                    continue
+
+                if choice == "29":
+                    res = _get(client, "/analytics/embedded/orders-with-enriched-items")
+                    print("Órdenes con items enriquecidos (embebidos):")
+                    print(res[:3] if isinstance(res, list) else res)
+                    continue
+
+                if choice == "30":
+                    res = _get(client, "/analytics/embedded/restaurant-menu-aggregated")
+                    print("Menú de restaurante agregado (embebido):")
+                    print(res[:3] if isinstance(res, list) else res)
                     continue
 
                 print("Opción inválida.")
