@@ -183,7 +183,7 @@ class CreateOrderWithOptionalReviewRequest(BaseModel):
 # ============ MODELOS PARA OPERACIONES DE ARRAYS (DINÁMICOS) ============
 class AddTagToMenuItemRequest(BaseModel):
     """Modelo para agregar dinámicamente un tag a un item de menú"""
-    itemId: str = Field(..., description="ID del item de menú")
+    itemName: str = Field(..., description="Nombre del item de menú")
     tag: str = Field(..., description="Tag a agregar")
 
 

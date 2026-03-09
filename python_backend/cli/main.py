@@ -341,50 +341,14 @@ def main() -> None:
                     continue
 
                 if choice == "26":
-                    # Obtener items disponibles
-                    res = _get(client, "/menu-items")
-                    if not isinstance(res, list) or len(res) == 0:
-                        print("No menu items found")
-                        continue
-
-                    # Permitir filtrar por nombre
-                    search = _prompt("Buscar item por nombre (Enter para ver todos)", "").lower()
-                    filtered_items = [
-                        item for item in res if search == "" or search in item.get("name", "").lower()
-                    ]
-
-                    if not filtered_items:
-                        print("No items found matching that search")
-                        continue
-
-                    print(f"\n=== Selecciona un item (mostrando {len(filtered_items[:20])} de {len(filtered_items)}) ===")
-                    for i, item in enumerate(filtered_items[:20]):
-                        print(f"{i}) {item.get('name')} (${item.get('price')})")
-
-                    try:
-                        idx = int(_prompt("Selecciona el número del item"))
-                        if idx < 0 or idx >= len(filtered_items[:20]):
-                            print("Opción inválida")
-                            continue
-                    except ValueError:
-                        print("Debes ingresar un número")
-                        continue
-
-                    selected_item = filtered_items[idx]
-                    item_id = _get_id(selected_item)
-
-                    if not item_id:
-                        print("Error: Could not get item ID")
-                        continue
-
-                    # Pedir el tag
+                    item_name = _prompt("Nombre del item")
                     print("\nEjemplos de tags: featured, vegetarian, organic, spicy, bestseller")
                     tag = _prompt("tag a agregar", "featured")
 
                     res = _post(
                         client,
                         "/analytics/arrays/add-tag-to-menu-item",
-                        json={"itemId": item_id, "tag": tag},
+                        json={"itemName": item_name, "tag": tag},
                     )
                     print("Agregar tag con $addToSet:", res)
                     continue

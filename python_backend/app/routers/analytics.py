@@ -277,24 +277,19 @@ async def add_tag_to_menu_item(
     req: AddTagToMenuItemRequest, db: AsyncIOMotorDatabase = Depends(get_db)
 ) -> dict:
     """$addToSet: Agrega dinámicamente un tag a un item de menú (no duplicados)"""
-    try:
-        item_id = ObjectId(req.itemId)
-    except Exception:
-        return {"error": "Invalid item ID format"}
-
-    menu_item = await db["menuItems"].find_one({"_id": item_id})
+    menu_item = await db["menuItems"].find_one({"name": req.itemName})
     if not menu_item:
-        return {"error": f"Menu item with ID {req.itemId} not found"}
+        return {"error": f"Menu item '{req.itemName}' no está disponible"}
 
     result = await db["menuItems"].update_one(
-        {"_id": item_id}, {"$addToSet": {"tags": req.tag}}
+        {"_id": menu_item["_id"]}, {"$addToSet": {"tags": req.tag}}
     )
 
-    updated_item = await db["menuItems"].find_one({"_id": item_id})
+    updated_item = await db["menuItems"].find_one({"_id": menu_item["_id"]})
     return {
         "action": "$addToSet",
         "description": f"Agregó tag '{req.tag}' si no existe",
-        "itemId": req.itemId,
+        "itemName": req.itemName,
         "modified": result.modified_count,
         "tags": updated_item.get("tags", []),
     }
