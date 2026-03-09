@@ -1,0 +1,186 @@
+{
+  "explainVersion": "1",
+  "queryPlanner": {
+    "namespace": "restaurant_system.restaurants",
+    "parsedQuery": {
+      "$text": {
+        "$search": "pizza",
+        "$language": "english",
+        "$caseSensitive": false,
+        "$diacriticSensitive": false
+      }
+    },
+    "indexFilterSet": false,
+    "queryHash": "CF6F4CEE",
+    "planCacheShapeHash": "CF6F4CEE",
+    "planCacheKey": "08852285",
+    "optimizationTimeMillis": 0,
+    "maxIndexedOrSolutionsReached": false,
+    "maxIndexedAndSolutionsReached": false,
+    "maxScansToExplodeReached": false,
+    "prunedSimilarIndexes": false,
+    "winningPlan": {
+      "isCached": false,
+      "stage": "LIMIT",
+      "limitAmount": 20,
+      "inputStage": {
+        "stage": "TEXT_MATCH",
+        "indexPrefix": {},
+        "indexName": "name_text_description_text",
+        "parsedTextQuery": {
+          "terms": [
+            "pizza"
+          ],
+          "negatedTerms": [],
+          "phrases": [],
+          "negatedPhrases": []
+        },
+        "textIndexVersion": 3,
+        "inputStage": {
+          "stage": "FETCH",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "_fts": "text",
+              "_ftsx": 1
+            },
+            "indexName": "name_text_description_text",
+            "isMultiKey": true,
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "backward",
+            "indexBounds": {}
+          }
+        }
+      }
+    },
+    "rejectedPlans": []
+  },
+  "executionStats": {
+    "executionSuccess": true,
+    "nReturned": 0,
+    "executionTimeMillis": 0,
+    "totalKeysExamined": 0,
+    "totalDocsExamined": 0,
+    "executionStages": {
+      "isCached": false,
+      "stage": "LIMIT",
+      "nReturned": 0,
+      "executionTimeMillisEstimate": 0,
+      "works": 1,
+      "advanced": 0,
+      "needTime": 0,
+      "needYield": 0,
+      "saveState": 0,
+      "restoreState": 0,
+      "isEOF": 1,
+      "limitAmount": 20,
+      "inputStage": {
+        "stage": "TEXT_MATCH",
+        "nReturned": 0,
+        "executionTimeMillisEstimate": 0,
+        "works": 1,
+        "advanced": 0,
+        "needTime": 0,
+        "needYield": 0,
+        "saveState": 0,
+        "restoreState": 0,
+        "isEOF": 1,
+        "indexPrefix": {},
+        "indexName": "name_text_description_text",
+        "parsedTextQuery": {
+          "terms": [
+            "pizza"
+          ],
+          "negatedTerms": [],
+          "phrases": [],
+          "negatedPhrases": []
+        },
+        "textIndexVersion": 3,
+        "docsRejected": 0,
+        "inputStage": {
+          "stage": "FETCH",
+          "nReturned": 0,
+          "executionTimeMillisEstimate": 0,
+          "works": 1,
+          "advanced": 0,
+          "needTime": 0,
+          "needYield": 0,
+          "saveState": 0,
+          "restoreState": 0,
+          "isEOF": 1,
+          "docsExamined": 0,
+          "alreadyHasObj": 0,
+          "inputStage": {
+            "stage": "IXSCAN",
+            "nReturned": 0,
+            "executionTimeMillisEstimate": 0,
+            "works": 1,
+            "advanced": 0,
+            "needTime": 0,
+            "needYield": 0,
+            "saveState": 0,
+            "restoreState": 0,
+            "isEOF": 1,
+            "keyPattern": {
+              "_fts": "text",
+              "_ftsx": 1
+            },
+            "indexName": "name_text_description_text",
+            "isMultiKey": true,
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "backward",
+            "indexBounds": {},
+            "keysExamined": 0,
+            "seeks": 1,
+            "dupsTested": 0,
+            "dupsDropped": 0
+          }
+        }
+      }
+    }
+  },
+  "queryShapeHash": "00FAC421816A672E02D036700AFF84311AF297F85D4488B726ADB64B54E383CB",
+  "command": {
+    "find": "restaurants",
+    "filter": {
+      "$text": {
+        "$search": "pizza"
+      }
+    },
+    "limit": 20,
+    "$db": "restaurant_system"
+  },
+  "serverInfo": {
+    "host": "ac-wzlxxdm-shard-00-02.s0manhd.mongodb.net",
+    "port": 27017,
+    "version": "8.0.20",
+    "gitVersion": "28927c60881a488fcbc5fd4d925b410f33258827"
+  },
+  "serverParameters": {
+    "internalQueryFacetBufferSizeBytes": 104857600,
+    "internalQueryFacetMaxOutputDocSizeBytes": 104857600,
+    "internalLookupStageIntermediateDocumentMaxSizeBytes": 16793600,
+    "internalDocumentSourceGroupMaxMemoryBytes": 104857600,
+    "internalQueryMaxBlockingSortMemoryUsageBytes": 33554432,
+    "internalQueryProhibitBlockingMergeOnMongoS": 0,
+    "internalQueryMaxAddToSetBytes": 104857600,
+    "internalDocumentSourceSetWindowFieldsMaxMemoryBytes": 104857600,
+    "internalQueryFrameworkControl": "trySbeRestricted",
+    "internalQueryPlannerIgnoreIndexWithCollationForRegex": 1
+  },
+  "ok": 1.0,
+  "$clusterTime": {
+    "clusterTime": "Timestamp(1773038788, 6)",
+    "signature": {
+      "hash": "b'\\x9a\\xbc\\xa82\\x00\\x8b\\xd5oq\\x8c(S\\xae\\xaa\\xdbJ/\\xdf}\\x9f'",
+      "keyId": 7563773506626781193
+    }
+  },
+  "operationTime": "Timestamp(1773038788, 6)"
+}

@@ -1,0 +1,79 @@
+{
+  "explainVersion": "1",
+  "queryPlanner": {
+    "namespace": "restaurant_system.users",
+    "parsedQuery": {
+      "email": {
+        "$eq": "user0@example.com"
+      }
+    },
+    "indexFilterSet": false,
+    "queryHash": "ED28E3D2",
+    "planCacheShapeHash": "ED28E3D2",
+    "planCacheKey": "1E950542",
+    "optimizationTimeMillis": 0,
+    "maxIndexedOrSolutionsReached": false,
+    "maxIndexedAndSolutionsReached": false,
+    "maxScansToExplodeReached": false,
+    "prunedSimilarIndexes": false,
+    "winningPlan": {
+      "isCached": false,
+      "stage": "EXPRESS_IXSCAN",
+      "keyPattern": "{ email: 1 }",
+      "indexName": "email_1"
+    },
+    "rejectedPlans": []
+  },
+  "executionStats": {
+    "executionSuccess": true,
+    "nReturned": 1,
+    "executionTimeMillis": 0,
+    "totalKeysExamined": 1,
+    "totalDocsExamined": 1,
+    "executionStages": {
+      "isCached": false,
+      "stage": "EXPRESS_IXSCAN",
+      "keyPattern": "{ email: 1 }",
+      "indexName": "email_1",
+      "keysExamined": 1,
+      "docsExamined": 1,
+      "nReturned": 1
+    }
+  },
+  "queryShapeHash": "1B719E8D16A5BA9573BE34001070594094717921AF5D6A31073E94A0CE5FB05B",
+  "command": {
+    "find": "users",
+    "filter": {
+      "email": "user0@example.com"
+    },
+    "limit": 1,
+    "$db": "restaurant_system"
+  },
+  "serverInfo": {
+    "host": "ac-wzlxxdm-shard-00-02.s0manhd.mongodb.net",
+    "port": 27017,
+    "version": "8.0.20",
+    "gitVersion": "28927c60881a488fcbc5fd4d925b410f33258827"
+  },
+  "serverParameters": {
+    "internalQueryFacetBufferSizeBytes": 104857600,
+    "internalQueryFacetMaxOutputDocSizeBytes": 104857600,
+    "internalLookupStageIntermediateDocumentMaxSizeBytes": 16793600,
+    "internalDocumentSourceGroupMaxMemoryBytes": 104857600,
+    "internalQueryMaxBlockingSortMemoryUsageBytes": 33554432,
+    "internalQueryProhibitBlockingMergeOnMongoS": 0,
+    "internalQueryMaxAddToSetBytes": 104857600,
+    "internalDocumentSourceSetWindowFieldsMaxMemoryBytes": 104857600,
+    "internalQueryFrameworkControl": "trySbeRestricted",
+    "internalQueryPlannerIgnoreIndexWithCollationForRegex": 1
+  },
+  "ok": 1.0,
+  "$clusterTime": {
+    "clusterTime": "Timestamp(1773038788, 5)",
+    "signature": {
+      "hash": "b'\\x9a\\xbc\\xa82\\x00\\x8b\\xd5oq\\x8c(S\\xae\\xaa\\xdbJ/\\xdf}\\x9f'",
+      "keyId": 7563773506626781193
+    }
+  },
+  "operationTime": "Timestamp(1773038788, 5)"
+}

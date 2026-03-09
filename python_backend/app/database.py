@@ -40,3 +40,10 @@ async def create_indexes() -> None:
         [("name", "text"), ("description", "text")]
     )
 
+    # Intento de configurar la BD para rechazar COLLSCAN (si el cluster lo permite).
+    # En Atlas compartido puede fallar por permisos; en ese caso se ignora.
+    try:
+        await client.admin.command({"setParameter": 1, "notablescan": 1})
+    except Exception:
+        pass
+

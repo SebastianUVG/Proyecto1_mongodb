@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -8,8 +8,8 @@ class Location(BaseModel):
     type: Literal["Point"] = "Point"
     coordinates: List[float] = Field(
         ...,
-        min_items=2,
-        max_items=2,
+        min_length=2,
+        max_length=2,
         description="[lng, lat]",
     )
 
@@ -102,7 +102,7 @@ class OrderBase(BaseModel):
     restaurantId: str
     items: List[OrderItem]
     status: Literal["pending", "completed", "cancelled"] = "pending"
-    totalAmount: float
+    totalAmount: Optional[float] = None
 
 
 class OrderCreate(OrderBase):
@@ -127,13 +127,13 @@ class OrderPublic(BaseModel):
 class ReviewBase(BaseModel):
     restaurantId: str
     userId: str
-    orderId: str
-    rating: float
+    orderId: Optional[str] = None
+    rating: float = Field(ge=1, le=5)
     comment: str
 
 
 class ReviewCreate(BaseModel):
-    rating: float
+    rating: float = Field(ge=1, le=5)
     comment: str
 
 
@@ -157,4 +157,25 @@ class TopRatedRestaurant(BaseModel):
     avgRating: float
     totalReviews: int
     restaurant: Optional[list] = None
+
+
+class UpdateManyRequest(BaseModel):
+    filter: Dict[str, Any] = Field(default_factory=dict)
+    update: Dict[str, Any]
+
+
+class DeleteManyRequest(BaseModel):
+    filter: Dict[str, Any] = Field(default_factory=dict)
+
+
+class OrderCreateRequest(BaseModel):
+    userId: str
+    restaurantId: str
+    items: List[OrderItem]
+    status: Literal["pending", "completed", "cancelled"] = "completed"
+
+
+class CreateOrderWithOptionalReviewRequest(BaseModel):
+    order: OrderCreateRequest
+    review: Optional[ReviewCreate] = None
 

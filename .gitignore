@@ -51,5 +51,6 @@ env/
 dump/
 *.bak
 
-# ---- Safety: ignore nested git metadata if present ----
-.git/
+# ---- Generated explain outputs (keep if you want evidence) ----
+# If you prefer to NOT version these, uncomment:
+# python_backend/docs/explain/
