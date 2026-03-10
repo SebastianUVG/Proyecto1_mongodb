@@ -1,0 +1,11 @@
+services:
+  api:
+    build:
+      context: ./python_backend
+      dockerfile: Dockerfile
+    environment:
+      MONGO_URI: ${MONGO_URI}
+      ENFORCE_NO_COLLSCAN: ${ENFORCE_NO_COLLSCAN:-0}
+    ports:
+      - "8000:8000"
+    restart: unless-stopped

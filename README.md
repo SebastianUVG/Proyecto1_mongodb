@@ -15,6 +15,22 @@ uvicorn app.main:app --reload --port 8000
 
 - Swagger: `http://localhost:8000/docs`
 
+### Correr con Docker (solo contenedor del API)
+
+1) Exporta tu URI de Atlas:
+
+```bash
+export MONGO_URI="mongodb+srv://<Usuario>:<db_password>@<cluster>.mongodb.net/?retryWrites=true&w=majority"
+```
+
+2) Levanta el contenedor:
+
+```bash
+docker compose up --build
+```
+
+Luego abre `http://localhost:8000/docs`.
+
 ### CLI (demo)
 
 ```bash

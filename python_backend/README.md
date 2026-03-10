@@ -42,7 +42,7 @@ El script de seed crea datos coherentes y, por defecto, genera **50,000 órdenes
 python3 scripts/seed.py
 ```
 
-Puedes ajustar cantidades:
+Se pueden ajustar cantidades:
 
 ```bash
 python3 scripts/seed.py --orders 50000 --restaurants 30 --users 200 --menu-items 300 --reviews 5000
