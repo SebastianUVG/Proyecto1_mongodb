@@ -146,7 +146,7 @@ class ReviewPublic(BaseModel):
     id: str
     restaurantId: str
     userId: str
-    orderId: str
+    orderId: Optional[str] = None
     rating: float
     comment: str
     createdAt: datetime
