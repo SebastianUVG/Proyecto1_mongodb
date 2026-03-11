@@ -1,4 +1,5 @@
 import re
+from datetime import datetime as dt
 import streamlit as st
 import requests
 import pandas as pd
@@ -6,6 +7,109 @@ import plotly.express as px
 
 API_URL = "http://localhost:8000"
 BULK_CHUNK_SIZE = 2000  # documentos por request en Crear Bulk (evita timeouts y límites de tamaño)
+
+LIMIT_OPTIONS = [10, 25, 50, 100, 200]
+
+COLUMN_LABELS = {
+    "_id": "ID",
+    "id": "ID",
+    "name": "Nombre",
+    "description": "Descripción",
+    "category": "Categoría",
+    "location": "Ubicación",
+    "ratingAverage": "Valoración",
+    "createdAt": "Fecha",
+    "price": "Precio",
+    "tags": "Etiquetas",
+    "restaurantId": "ID Restaurante",
+    "userId": "ID Usuario",
+    "totalAmount": "Total",
+    "status": "Estado",
+    "items": "Productos",
+    "rating": "Valoración",
+    "comment": "Comentario",
+    "orderId": "ID Orden",
+    "filename": "Nombre archivo",
+    "contentType": "Tipo",
+    "uploadedAt": "Fecha subida",
+    "gridfsId": "ID Archivo",
+    "restaurantName": "Restaurante",
+    "avgRating": "Valoración media",
+    "totalReviews": "Total reseñas",
+    "totalRevenue": "Ingresos",
+    "totalSold": "Vendidos",
+    "totalQuantity": "Cantidad",
+    "avgPrice": "Precio medio",
+}
+
+STATUS_ES = {"pending": "Pendiente", "completed": "Completada", "cancelled": "Cancelada"}
+
+
+def _format_date(val):
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return ""
+    if isinstance(val, str):
+        try:
+            d = dt.fromisoformat(val.replace("Z", "+00:00"))
+            return d.strftime("%d/%m/%Y %H:%M") if d else val
+        except Exception:
+            return val
+    return str(val)
+
+
+def _format_currency(val):
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return ""
+    try:
+        n = float(val)
+        return f"$ {n:,.2f}"
+    except (TypeError, ValueError):
+        return str(val)
+
+
+def format_dataframe_restaurant(df, drop_id=True, currency_cols=None, date_cols=None, status_col="status"):
+    """Renombra columnas al español, formatea moneda/fechas/estado. Devuelve DataFrame listo para mostrar."""
+    if df is None or df.empty:
+        return df
+    df = df.copy()
+    currency_cols = currency_cols or ["totalAmount", "price", "totalRevenue", "avgPrice", "subtotal"]
+    date_cols = date_cols or ["createdAt", "uploadedAt"]
+    for c in currency_cols:
+        if c in df.columns:
+            df[c] = df[c].apply(_format_currency)
+    for c in date_cols:
+        if c in df.columns:
+            df[c] = df[c].apply(_format_date)
+    if status_col and status_col in df.columns:
+        df[status_col] = df[status_col].apply(lambda x: STATUS_ES.get(str(x).lower(), x) if x is not None else "")
+    rename = {k: v for k, v in COLUMN_LABELS.items() if k in df.columns}
+    df = df.rename(columns=rename)
+    if drop_id and "ID" in df.columns:
+        df["ID"] = df["ID"].astype(str).str[:8]
+    return df
+
+
+def _show_simple_analytics(data, title=None):
+    """Muestra un dict o lista de analytics como tabla legible en español."""
+    if data is None:
+        return
+    if isinstance(data, dict):
+        if not data:
+            st.info("Sin datos.")
+            return
+        rows = [{"Concepto": str(k), "Valor": v} for k, v in data.items()]
+        df = pd.DataFrame(rows)
+        st.dataframe(df, use_container_width=True)
+    elif isinstance(data, list):
+        if not data:
+            st.info("Sin datos.")
+            return
+        df = pd.DataFrame(data)
+        df = format_dataframe_restaurant(df)
+        st.dataframe(df, use_container_width=True)
+    if title:
+        st.caption(title)
+
 
 st.set_page_config(page_title="Restaurant Dashboard", layout="wide")
 
@@ -50,14 +154,26 @@ if menu == "Restaurantes":
     st.divider()
 
     st.subheader("Lista de Restaurantes")
-
-    if st.button("Cargar Restaurantes"):
-        response = requests.get(f"{API_URL}/restaurants")
+    limit_rest = st.selectbox("Mostrar hasta", LIMIT_OPTIONS, index=1, key="rest_limit")
+    skip_rest = st.number_input("Saltar primeros", min_value=0, value=0, key="rest_skip")
+    if st.button("Cargar Restaurantes", key="rest_btn_load"):
+        response = requests.get(f"{API_URL}/restaurants", params={"limit": limit_rest, "skip": skip_rest})
         if response.status_code == 200:
-            st.dataframe(response.json())
+            data = response.json()
+            df = pd.DataFrame(data)
+            if not df.empty:
+                if "location" in df.columns:
+                    df["location"] = df["location"].apply(
+                        lambda x: f"{x.get('coordinates', [0,0])[1]:.4f}, {x.get('coordinates', [0,0])[0]:.4f}" if isinstance(x, dict) else str(x)
+                    )
+                df = format_dataframe_restaurant(df, date_cols=["createdAt"])
+                st.dataframe(df, use_container_width=True)
+                st.caption(f"Mostrando {len(data)} registros.")
+            else:
+                st.info("No hay restaurantes.")
         else:
             st.error("Error al cargar restaurantes")
-            
+
 # ---------------- ITEMS ----------------
 
 elif menu == "Menu Items":
@@ -95,11 +211,21 @@ elif menu == "Menu Items":
     st.divider()
 
     st.subheader("Lista de Menu Items")
-
-    if st.button("Cargar Menu Items"):
-        response = requests.get(f"{API_URL}/menu-items")
+    limit_mi = st.selectbox("Mostrar hasta", LIMIT_OPTIONS, index=1, key="menu_limit")
+    skip_mi = st.number_input("Saltar primeros", min_value=0, value=0, key="menu_skip")
+    if st.button("Cargar Menu Items", key="menu_btn_load"):
+        response = requests.get(f"{API_URL}/menu-items", params={"limit": limit_mi, "skip": skip_mi})
         if response.status_code == 200:
-            st.dataframe(response.json())
+            data = response.json()
+            df = pd.DataFrame(data)
+            if not df.empty:
+                if "tags" in df.columns:
+                    df["tags"] = df["tags"].apply(lambda x: ", ".join(x) if isinstance(x, list) else str(x))
+                df = format_dataframe_restaurant(df, currency_cols=["price"], date_cols=[])
+                st.dataframe(df, use_container_width=True)
+                st.caption(f"Mostrando {len(data)} registros.")
+            else:
+                st.info("No hay ítems de menú.")
         else:
             st.error("Error al cargar menu items")
 
@@ -156,22 +282,26 @@ elif menu == "Órdenes":
             st.error(f"Error: {r.text}")
 
     st.divider()
-    
-    st.subheader("Lista de Órdenes")
 
-    if st.button("Cargar Órdenes"):
-        response = requests.get(f"{API_URL}/orders")
+    st.subheader("Lista de Órdenes")
+    limit_ord = st.selectbox("Mostrar hasta", LIMIT_OPTIONS, index=1, key="ord_limit")
+    skip_ord = st.number_input("Saltar primeros", min_value=0, value=0, key="ord_skip")
+    if st.button("Cargar Órdenes", key="ord_btn_load"):
+        response = requests.get(f"{API_URL}/orders", params={"limit": limit_ord, "skip": skip_ord})
         if response.status_code == 200:
             orders = response.json()
-
             for order in orders:
-                order["items"] = ", ".join(
-                    [item["name"] for item in order.get("items", [])]
-                )
-
-            st.dataframe(orders)
+                order["items"] = ", ".join([item["name"] for item in order.get("items", [])])
+            df = pd.DataFrame(orders)
+            if not df.empty:
+                df = format_dataframe_restaurant(df, currency_cols=["totalAmount"], date_cols=["createdAt"], status_col="status")
+                st.dataframe(df, use_container_width=True)
+                st.caption(f"Mostrando {len(orders)} registros.")
+            else:
+                st.info("No hay órdenes.")
         else:
             st.error("Error al cargar órdenes")
+
 # ---------------- REVIEWS ----------------
 elif menu == "Reviews":
     st.header("Crear Review")
@@ -217,11 +347,19 @@ elif menu == "Reviews":
     st.divider()
 
     st.subheader("Lista de Reviews")
-
-    if st.button("Cargar Reviews"):
-        response = requests.get(f"{API_URL}/reviews")
+    limit_rev = st.selectbox("Mostrar hasta", LIMIT_OPTIONS, index=1, key="rev_limit")
+    skip_rev = st.number_input("Saltar primeros", min_value=0, value=0, key="rev_skip")
+    if st.button("Cargar Reviews", key="rev_btn_load"):
+        response = requests.get(f"{API_URL}/reviews", params={"limit": limit_rev, "skip": skip_rev})
         if response.status_code == 200:
-            st.dataframe(response.json())
+            data = response.json()
+            df = pd.DataFrame(data)
+            if not df.empty:
+                df = format_dataframe_restaurant(df, date_cols=["createdAt"], status_col=None)
+                st.dataframe(df, use_container_width=True)
+                st.caption(f"Mostrando {len(data)} registros.")
+            else:
+                st.info("No hay reseñas.")
         else:
             st.error("Error al cargar reviews")
 
@@ -249,7 +387,7 @@ elif menu == "Analytics":
         st.metric("Órdenes", total_orders)
 
     with col_kpi3:
-        st.metric("Revenue Total", f"${total_revenue}")
+        st.metric("Ingresos totales", _format_currency(total_revenue))
 
     col1, col2 = st.columns(2)
 
@@ -301,57 +439,92 @@ elif menu == "Analytics":
     col3, col4 = st.columns(2)
 
     with col3:
-        if st.button("Categorías Distintas de Restaurantes"):
+        if st.button("Categorías Distintas de Restaurantes", key="an_cat"):
             r = requests.get(f"{API_URL}/analytics/simple/distinct-categories")
             if r.status_code == 200:
-                st.json(r.json())
+                d = r.json()
+                if isinstance(d.get("categories"), list):
+                    df = pd.DataFrame({"Categoría": d["categories"]})
+                    st.dataframe(df, use_container_width=True)
+                else:
+                    _show_simple_analytics(d)
 
-        if st.button("Conteo por Status de Órdenes"):
+        if st.button("Conteo por Estado de Órdenes", key="an_status"):
             r = requests.get(f"{API_URL}/analytics/simple/counts-by-status")
             if r.status_code == 200:
-                st.json(r.json())
+                d = r.json()
+                rows = [{"Estado": STATUS_ES.get(k, k), "Cantidad": v} for k, v in d.items()]
+                st.dataframe(pd.DataFrame(rows), use_container_width=True)
 
     with col4:
-        if st.button("Tags Distintos de Menu Items"):
+        if st.button("Tags Distintos de Menu Items", key="an_tags"):
             r = requests.get(f"{API_URL}/analytics/simple/distinct-menu-categories")
             if r.status_code == 200:
-                st.json(r.json())
+                d = r.json()
+                if isinstance(d.get("categories"), list) and d["categories"]:
+                    st.markdown("**Categorías de platos**")
+                    st.dataframe(pd.DataFrame({"Categoría": d["categories"]}), use_container_width=True)
+                if isinstance(d.get("tags"), list) and d["tags"]:
+                    st.markdown("**Etiquetas**")
+                    st.dataframe(pd.DataFrame({"Etiqueta": d["tags"]}), use_container_width=True)
+                if not d.get("categories") and not d.get("tags"):
+                    st.info("Sin datos.")
 
-        if st.button("Conteos Generales"):
+        if st.button("Conteos Generales", key="an_counts"):
             r = requests.get(f"{API_URL}/analytics/counts")
             if r.status_code == 200:
-                st.json(r.json())
+                d = r.json()
+                rows = [{"Concepto": k, "Cantidad": v} for k, v in d.items()]
+                st.dataframe(pd.DataFrame(rows), use_container_width=True)
 
     st.divider()
 
     # AGREGACIONES COMPLEJAS
     st.subheader("Agregaciones Complejas")
-    if st.button("Top Menu Items Vendidos"):
+    if st.button("Top Menu Items Vendidos", key="an_top_items"):
         r = requests.get(f"{API_URL}/analytics/top-menu-items")
         if r.status_code == 200:
-            st.dataframe(r.json())
+            df = pd.DataFrame(r.json())
+            df = format_dataframe_restaurant(df)
+            st.dataframe(df, use_container_width=True)
+            st.caption("Productos más vendidos.")
 
-    if st.button("Análisis de Items en Órdenes"):
+    if st.button("Análisis de Items en Órdenes", key="an_order_items"):
         r = requests.get(f"{API_URL}/analytics/complex/order-items-analysis")
         if r.status_code == 200:
-            st.dataframe(r.json())
+            df = pd.DataFrame(r.json())
+            df = format_dataframe_restaurant(df, currency_cols=["avgPrice", "maxPrice"])
+            st.dataframe(df, use_container_width=True)
+            st.caption("Análisis de productos en órdenes.")
 
-    if st.button("Segmentación de Usuarios por Gasto"):
+    if st.button("Segmentación de Usuarios por Gasto", key="an_spending"):
         r = requests.get(f"{API_URL}/analytics/complex/user-spending-brackets")
         if r.status_code == 200:
-            st.dataframe(r.json())
+            df = pd.DataFrame(r.json())
+            df = format_dataframe_restaurant(df)
+            st.dataframe(df, use_container_width=True)
+            st.caption("Usuarios por rango de gasto.")
 
-    if st.button("Performance Analytics de Restaurantes"):
+    if st.button("Rendimiento de Restaurantes", key="an_perf"):
         r = requests.get(f"{API_URL}/analytics/complex/restaurant-performance-analytics")
         if r.status_code == 200:
             data = r.json()
             if data:
-                st.write("Top by Rating:")
-                st.dataframe(data[0].get("topByRating", []))
-                st.write("Top by Orders:")
-                st.dataframe(data[0].get("topByOrders", []))
-                st.write("Category Stats:")
-                st.dataframe(data[0].get("categoryStats", []))
+                st.markdown("**Mejores por valoración**")
+                df1 = pd.DataFrame(data[0].get("topByRating", []))
+                if not df1.empty:
+                    df1 = format_dataframe_restaurant(df1)
+                    st.dataframe(df1, use_container_width=True)
+                st.markdown("**Mejores por número de órdenes**")
+                df2 = pd.DataFrame(data[0].get("topByOrders", []))
+                if not df2.empty:
+                    df2 = format_dataframe_restaurant(df2)
+                    st.dataframe(df2, use_container_width=True)
+                st.markdown("**Estadísticas por categoría**")
+                df3 = pd.DataFrame(data[0].get("categoryStats", []))
+                if not df3.empty:
+                    df3 = format_dataframe_restaurant(df3)
+                    st.dataframe(df3, use_container_width=True)
 
 # ---------------- CREAR BULK ----------------
 elif menu == "Crear Bulk":
@@ -510,31 +683,42 @@ elif menu == "Consultas Avanzadas":
 
     if sub_menu == "Restaurantes con Filtros":
         st.subheader("Lista de Restaurantes con Filtros")
-        category = st.text_input("Categoría (opcional)")
-        sort = st.selectbox("Ordenar por", ["createdAt", "-createdAt", "name"])
-        skip = st.number_input("Skip", min_value=0, value=0)
-        limit = st.number_input("Limit", min_value=1, max_value=200, value=20)
-        if st.button("Consultar"):
-            params = {"sort": sort, "skip": skip, "limit": limit}
+        category = st.text_input("Categoría (opcional)", key="adv_rest_cat")
+        sort = st.selectbox("Ordenar por", ["createdAt", "-createdAt", "name"], key="adv_rest_sort")
+        skip_adv = st.number_input("Saltar primeros", min_value=0, value=0, key="adv_rest_skip")
+        limit_adv = st.selectbox("Mostrar hasta", LIMIT_OPTIONS, index=1, key="adv_rest_limit")
+        if st.button("Consultar", key="adv_rest_btn"):
+            params = {"sort": sort, "skip": skip_adv, "limit": limit_adv}
             if category:
                 params["category"] = category
             r = requests.get(f"{API_URL}/restaurants", params=params)
             if r.status_code == 200:
-                st.dataframe(r.json())
+                data = r.json()
+                df = pd.DataFrame(data)
+                if not df.empty:
+                    if "location" in df.columns:
+                        df["location"] = df["location"].apply(
+                            lambda x: f"{x.get('coordinates', [0,0])[1]:.4f}, {x.get('coordinates', [0,0])[0]:.4f}" if isinstance(x, dict) else str(x)
+                        )
+                    df = format_dataframe_restaurant(df, date_cols=["createdAt"])
+                    st.dataframe(df, use_container_width=True)
+                    st.caption(f"Mostrando {len(data)} registros.")
+                else:
+                    st.info("No hay resultados.")
             else:
                 st.error("Error en consulta")
 
     elif sub_menu == "Órdenes Enriquecidas":
         st.subheader("Órdenes Enriquecidas (con Lookups)")
-        restaurant_id = st.text_input("Restaurant ID (opcional)")
-        status_filter = st.selectbox("Status", ["", "pending", "completed", "cancelled"])
-        min_total = st.number_input("Min Total Amount", min_value=0.0, value=0.0)
-        sort = st.selectbox("Ordenar por", ["-createdAt", "createdAt", "totalAmount"])
-        skip = st.number_input("Skip", min_value=0, value=0)
-        limit = st.number_input("Limit", min_value=1, max_value=200, value=20)
-        lite = st.checkbox("Vista Lite")
-        if st.button("Consultar"):
-            params = {"sort": sort, "skip": skip, "limit": limit, "lite": lite}
+        restaurant_id = st.text_input("Restaurant ID (opcional)", key="adv_ord_rid")
+        status_filter = st.selectbox("Estado", ["", "pending", "completed", "cancelled"], key="adv_ord_status")
+        min_total = st.number_input("Total mínimo", min_value=0.0, value=0.0, key="adv_ord_mintotal")
+        sort = st.selectbox("Ordenar por", ["-createdAt", "createdAt", "totalAmount"], key="adv_ord_sort")
+        skip_adv = st.number_input("Saltar primeros", min_value=0, value=0, key="adv_ord_skip")
+        limit_adv = st.selectbox("Mostrar hasta", LIMIT_OPTIONS, index=1, key="adv_ord_limit")
+        lite = st.checkbox("Vista Lite", key="adv_ord_lite")
+        if st.button("Consultar", key="adv_ord_btn"):
+            params = {"sort": sort, "skip": skip_adv, "limit": limit_adv, "lite": lite}
             if restaurant_id:
                 params["restaurantId"] = restaurant_id
             if status_filter:
@@ -543,20 +727,36 @@ elif menu == "Consultas Avanzadas":
                 params["minTotal"] = min_total
             r = requests.get(f"{API_URL}/orders/enriched/query", params=params)
             if r.status_code == 200:
-                st.dataframe(r.json())
+                data = r.json()
+                df = pd.DataFrame(data)
+                if not df.empty:
+                    df = format_dataframe_restaurant(df, currency_cols=["totalAmount"], date_cols=["createdAt"], status_col="status")
+                    st.dataframe(df, use_container_width=True)
+                    st.caption(f"Mostrando {len(data)} registros.")
+                else:
+                    st.info("No hay resultados.")
             else:
                 st.error("Error en consulta")
 
     elif sub_menu == "Menu Items por Tag":
         st.subheader("Menu Items por Tag")
-        tag = st.text_input("Tag")
-        skip = st.number_input("Skip", min_value=0, value=0)
-        limit = st.number_input("Limit", min_value=1, max_value=200, value=20)
-        if st.button("Consultar") and tag:
-            params = {"skip": skip, "limit": limit}
+        tag = st.text_input("Tag", key="adv_tag_input")
+        skip_adv = st.number_input("Saltar primeros", min_value=0, value=0, key="adv_tag_skip")
+        limit_adv = st.selectbox("Mostrar hasta", LIMIT_OPTIONS, index=1, key="adv_tag_limit")
+        if st.button("Consultar", key="adv_tag_btn") and tag:
+            params = {"skip": skip_adv, "limit": limit_adv}
             r = requests.get(f"{API_URL}/menu-items/by-tag", params={"tag": tag, **params})
             if r.status_code == 200:
-                st.dataframe(r.json())
+                data = r.json()
+                df = pd.DataFrame(data)
+                if not df.empty:
+                    if "tags" in df.columns:
+                        df["tags"] = df["tags"].apply(lambda x: ", ".join(x) if isinstance(x, list) else str(x))
+                    df = format_dataframe_restaurant(df, currency_cols=["price"])
+                    st.dataframe(df, use_container_width=True)
+                    st.caption(f"Mostrando {len(data)} registros.")
+                else:
+                    st.info("No hay resultados.")
             else:
                 st.error("Error en consulta")
 
@@ -713,6 +913,7 @@ elif menu == "Archivos":
             st.rerun()
 
     st.subheader("Lista de Archivos")
+    limit_files = st.selectbox("Mostrar hasta", LIMIT_OPTIONS, index=1, key="archivos_limit")
     if st.button("Cargar Archivos", key="archivos_btn_cargar_lista"):
         try:
             r = requests.get(f"{API_URL}/files")
@@ -728,7 +929,16 @@ elif menu == "Archivos":
         st.rerun()
 
     if st.session_state.files_list_data is not None:
-        st.dataframe(st.session_state.files_list_data)
+        data = st.session_state.files_list_data[:limit_files]
+        if data:
+            df = pd.DataFrame(data)
+            if "gridfsId" in df.columns:
+                df["gridfsId"] = df["gridfsId"].astype(str).str[:8]
+            df = format_dataframe_restaurant(df, date_cols=["uploadedAt"], status_col=None)
+            st.dataframe(df, use_container_width=True)
+            st.caption(f"Mostrando {len(data)} de {len(st.session_state.files_list_data)} archivos.")
+        else:
+            st.info("No hay archivos.")
         if st.button("Limpiar lista", key="archivos_btn_limpiar_lista"):
             st.session_state.files_list_data = None
             st.rerun()
@@ -860,30 +1070,46 @@ elif menu == "Manejo de Arrays":
 
 # ---------------- DOCUMENTOS EMBEBIDOS ----------------
 elif menu == "Documentos Embebidos":
-    st.header("Manejo de Documentos Embebidos")
+    st.header("Órdenes y Menús (documentos embebidos)")
+    st.caption("Vista simplificada de órdenes con sus productos y de restaurantes con su menú.")
 
-    st.subheader("Órdenes con Items Embebidos")
-    if st.button("Cargar Órdenes con Items Enriquecidos"):
+    limit_emb = st.selectbox("Mostrar hasta", LIMIT_OPTIONS, index=1, key="emb_limit")
+
+    st.subheader("Órdenes con productos")
+    if st.button("Cargar órdenes con productos", key="emb_btn_orders"):
         r = requests.get(f"{API_URL}/analytics/embedded/orders-with-enriched-items")
         if r.status_code == 200:
-            data = r.json()
-            for order in data:
-                st.write(f"Order ID: {order['_id']}")
-                st.write("Items:")
-                for item in order.get("enrichedItems", []):
-                    st.write(f"  - {item['name']}: {item['quantity']} x ${item['price']} = ${item['subtotal']}")
-                st.divider()
+            data = r.json()[:limit_emb]
+            if not data:
+                st.info("No hay órdenes.")
+            else:
+                for order in data:
+                    oid = str(order.get("_id", ""))[:8]
+                    total = order.get("totalAmount")
+                    total_str = _format_currency(total) if total is not None else ""
+                    with st.expander(f"Orden #{oid} — Total: {total_str}", expanded=True):
+                        st.markdown("**Productos:**")
+                        for item in order.get("enrichedItems", []):
+                            sub = item.get("subtotal")
+                            sub_str = _format_currency(sub) if sub is not None else ""
+                            st.markdown(f"- {item.get('name', '—')}: {item.get('quantity', 0)} × {_format_currency(item.get('price'))} = {sub_str}")
+                st.caption(f"Mostrando {len(data)} órdenes.")
 
-    st.subheader("Restaurantes con Menú Embebido")
-    if st.button("Cargar Restaurantes con Menú"):
+    st.subheader("Restaurantes con menú")
+    if st.button("Cargar restaurantes con menú", key="emb_btn_rest"):
         r = requests.get(f"{API_URL}/analytics/embedded/restaurant-menu-aggregated")
         if r.status_code == 200:
-            data = r.json()
-            for rest in data:
-                st.write(f"Restaurante: {rest['name']}")
-                st.write(f"Menú Count: {rest['menuCount']}, Avg Price: ${rest.get('avgPrice', 0):.2f}")
-                st.write("Categorías:", rest.get("categories", []))
-                st.write("Menú Items (primeros 5):")
-                for item in rest.get("menu", [])[:5]:
-                    st.write(f"  - {item['name']}: ${item['price']}")
-                st.divider()
+            data = r.json()[:limit_emb]
+            if not data:
+                st.info("No hay restaurantes.")
+            else:
+                for rest in data:
+                    with st.expander(f"Restaurante: {rest.get('name', '—')}", expanded=True):
+                        st.markdown(f"**Platos en menú:** {rest.get('menuCount', 0)} — Precio medio: {_format_currency(rest.get('avgPrice'))}")
+                        cats = rest.get("categories", [])
+                        if cats:
+                            st.markdown(f"**Categorías:** {', '.join(str(c) for c in cats)}")
+                        st.markdown("**Algunos platos:**")
+                        for item in rest.get("menu", [])[:5]:
+                            st.markdown(f"- {item.get('name', '—')}: {_format_currency(item.get('price'))}")
+                st.caption(f"Mostrando {len(data)} restaurantes.")
