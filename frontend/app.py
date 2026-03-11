@@ -1,9 +1,11 @@
+import re
 import streamlit as st
 import requests
 import pandas as pd
 import plotly.express as px
 
 API_URL = "http://localhost:8000"
+BULK_CHUNK_SIZE = 2000  # documentos por request en Crear Bulk (evita timeouts y límites de tamaño)
 
 st.set_page_config(page_title="Restaurant Dashboard", layout="wide")
 
@@ -354,86 +356,151 @@ elif menu == "Analytics":
 # ---------------- CREAR BULK ----------------
 elif menu == "Crear Bulk":
     st.header("Creación Masiva de Documentos")
+    st.caption("Puedes crear hasta 50.000 o más documentos. Se envían en lotes para evitar timeouts.")
 
-    sub_menu = st.selectbox("Seleccionar entidad", ["Restaurantes", "Menu Items", "Órdenes", "Reviews"])
+    sub_menu = st.selectbox("Seleccionar entidad", ["Restaurantes", "Menu Items", "Órdenes", "Reviews"], key="bulk_entity")
 
     if sub_menu == "Restaurantes":
         st.subheader("Crear Restaurantes en Bulk")
-        num = st.number_input("Número de restaurantes", min_value=1, max_value=100, value=5)
-        if st.button("Crear Bulk Restaurantes"):
-            restaurants = []
-            for i in range(num):
-                restaurants.append({
-                    "name": f"Restaurante Bulk {i}",
-                    "description": f"Descripción {i}",
-                    "category": "Bulk",
-                    "location": {"type": "Point", "coordinates": [-90.5 + i*0.01, 14.5 + i*0.01]}
-                })
-            r = requests.post(f"{API_URL}/restaurants/bulk", json=restaurants)
-            if r.status_code == 200:
-                st.success(f"Creados {len(restaurants)} restaurantes")
-            else:
-                st.error("Error en bulk create")
+        num = int(st.number_input("Número de restaurantes", min_value=1, max_value=100_000, value=500, step=500))
+        if st.button("Crear Bulk Restaurantes", key="bulk_btn_restaurants"):
+            progress_bar = st.progress(0.0)
+            status_placeholder = st.empty()
+            total_created = 0
+            try:
+                for start in range(0, num, BULK_CHUNK_SIZE):
+                    end = min(start + BULK_CHUNK_SIZE, num)
+                    chunk = [
+                        {
+                            "name": f"Restaurante Bulk {i}",
+                            "description": f"Descripción {i}",
+                            "category": "Bulk",
+                            "location": {"type": "Point", "coordinates": [-90.5 + (i % 1000) * 0.01, 14.5 + (i % 1000) * 0.01]}
+                        }
+                        for i in range(start, end)
+                    ]
+                    r = requests.post(f"{API_URL}/restaurants/bulk", json=chunk, timeout=120)
+                    if r.status_code != 200:
+                        status_placeholder.error(f"Error en lote {start}-{end}: {r.status_code}")
+                        break
+                    total_created += len(chunk)
+                    progress_bar.progress(total_created / num)
+                    status_placeholder.text(f"Creados {total_created} / {num} restaurantes...")
+                else:
+                    progress_bar.progress(1.0)
+                    status_placeholder.empty()
+                    st.success(f"Creados {total_created} restaurantes.")
+            except requests.exceptions.RequestException as e:
+                status_placeholder.error(f"Error de conexión: {e}")
+                st.error(f"Creados hasta ahora: {total_created}")
 
     elif sub_menu == "Menu Items":
         st.subheader("Crear Menu Items en Bulk")
-        num = st.number_input("Número de items", min_value=1, max_value=100, value=10)
-        restaurant_id = st.text_input("Restaurant ID")
-        if st.button("Crear Bulk Menu Items") and restaurant_id:
-            items = []
-            for i in range(num):
-                items.append({
-                    "restaurantId": restaurant_id,
-                    "name": f"Item Bulk {i}",
-                    "price": 25 + i,
-                    "category": "Bulk",
-                    "tags": ["bulk"]
-                })
-            r = requests.post(f"{API_URL}/menu-items/bulk", json=items)
-            if r.status_code == 200:
-                st.success(f"Creados {len(items)} items")
-            else:
-                st.error("Error en bulk create")
+        num = int(st.number_input("Número de items", min_value=1, max_value=100_000, value=500, step=500))
+        restaurant_id = st.text_input("Restaurant ID", key="bulk_restaurant_id")
+        if st.button("Crear Bulk Menu Items", key="bulk_btn_menu") and restaurant_id:
+            progress_bar = st.progress(0.0)
+            status_placeholder = st.empty()
+            total_created = 0
+            try:
+                for start in range(0, num, BULK_CHUNK_SIZE):
+                    end = min(start + BULK_CHUNK_SIZE, num)
+                    chunk = [
+                        {
+                            "restaurantId": restaurant_id,
+                            "name": f"Item Bulk {i}",
+                            "price": 25 + (i % 100),
+                            "category": "Bulk",
+                            "tags": ["bulk"]
+                        }
+                        for i in range(start, end)
+                    ]
+                    r = requests.post(f"{API_URL}/menu-items/bulk", json=chunk, timeout=120)
+                    if r.status_code != 200:
+                        status_placeholder.error(f"Error en lote {start}-{end}: {r.status_code}")
+                        break
+                    total_created += len(chunk)
+                    progress_bar.progress(total_created / num)
+                    status_placeholder.text(f"Creados {total_created} / {num} items...")
+                else:
+                    progress_bar.progress(1.0)
+                    status_placeholder.empty()
+                    st.success(f"Creados {total_created} menu items.")
+            except requests.exceptions.RequestException as e:
+                status_placeholder.error(f"Error de conexión: {e}")
+                st.error(f"Creados hasta ahora: {total_created}")
 
     elif sub_menu == "Órdenes":
         st.subheader("Crear Órdenes en Bulk")
-        num = st.number_input("Número de órdenes", min_value=1, max_value=100, value=5)
-        user_id = st.text_input("User ID")
-        restaurant_id = st.text_input("Restaurant ID")
-        if st.button("Crear Bulk Órdenes") and user_id and restaurant_id:
-            orders = []
-            for i in range(num):
-                orders.append({
-                    "userId": user_id,
-                    "restaurantId": restaurant_id,
-                    "items": [{"menuItemId": "dummy", "name": "Dummy Item", "quantity": 1, "price": 10}],
-                    "status": "pending"
-                })
-            r = requests.post(f"{API_URL}/orders/bulk", json=orders)
-            if r.status_code == 200:
-                st.success(f"Creadas {len(orders)} órdenes")
-            else:
-                st.error("Error en bulk create")
+        num = int(st.number_input("Número de órdenes", min_value=1, max_value=100_000, value=1000, step=500))
+        user_id = st.text_input("User ID", key="bulk_user_id")
+        restaurant_id = st.text_input("Restaurant ID", key="bulk_order_restaurant_id")
+        if st.button("Crear Bulk Órdenes", key="bulk_btn_orders") and user_id and restaurant_id:
+            progress_bar = st.progress(0.0)
+            status_placeholder = st.empty()
+            total_created = 0
+            try:
+                for start in range(0, num, BULK_CHUNK_SIZE):
+                    end = min(start + BULK_CHUNK_SIZE, num)
+                    chunk = [
+                        {
+                            "userId": user_id,
+                            "restaurantId": restaurant_id,
+                            "items": [{"menuItemId": "dummy", "name": "Dummy Item", "quantity": 1, "price": 10}],
+                            "status": "pending"
+                        }
+                        for i in range(start, end)
+                    ]
+                    r = requests.post(f"{API_URL}/orders/bulk", json=chunk, timeout=120)
+                    if r.status_code != 200:
+                        status_placeholder.error(f"Error en lote {start}-{end}: {r.status_code}")
+                        break
+                    total_created += len(chunk)
+                    progress_bar.progress(total_created / num)
+                    status_placeholder.text(f"Creadas {total_created} / {num} órdenes...")
+                else:
+                    progress_bar.progress(1.0)
+                    status_placeholder.empty()
+                    st.success(f"Creadas {total_created} órdenes.")
+            except requests.exceptions.RequestException as e:
+                status_placeholder.error(f"Error de conexión: {e}")
+                st.error(f"Creadas hasta ahora: {total_created}")
 
     elif sub_menu == "Reviews":
         st.subheader("Crear Reviews en Bulk")
-        num = st.number_input("Número de reviews", min_value=1, max_value=100, value=5)
-        restaurant_id = st.text_input("Restaurant ID")
-        user_id = st.text_input("User ID")
-        if st.button("Crear Bulk Reviews") and restaurant_id and user_id:
-            reviews = []
-            for i in range(num):
-                reviews.append({
-                    "restaurantId": restaurant_id,
-                    "userId": user_id,
-                    "rating": 5,
-                    "comment": f"Review bulk {i}"
-                })
-            r = requests.post(f"{API_URL}/reviews/bulk", json=reviews)
-            if r.status_code == 200:
-                st.success(f"Creadas {len(reviews)} reviews")
-            else:
-                st.error("Error en bulk create")
+        num = int(st.number_input("Número de reviews", min_value=1, max_value=100_000, value=500, step=500))
+        restaurant_id = st.text_input("Restaurant ID", key="bulk_review_restaurant_id")
+        user_id = st.text_input("User ID", key="bulk_review_user_id")
+        if st.button("Crear Bulk Reviews", key="bulk_btn_reviews") and restaurant_id and user_id:
+            progress_bar = st.progress(0.0)
+            status_placeholder = st.empty()
+            total_created = 0
+            try:
+                for start in range(0, num, BULK_CHUNK_SIZE):
+                    end = min(start + BULK_CHUNK_SIZE, num)
+                    chunk = [
+                        {
+                            "restaurantId": restaurant_id,
+                            "userId": user_id,
+                            "rating": 5,
+                            "comment": f"Review bulk {i}"
+                        }
+                        for i in range(start, end)
+                    ]
+                    r = requests.post(f"{API_URL}/reviews/bulk", json=chunk, timeout=120)
+                    if r.status_code != 200:
+                        status_placeholder.error(f"Error en lote {start}-{end}: {r.status_code}")
+                        break
+                    total_created += len(chunk)
+                    progress_bar.progress(total_created / num)
+                    status_placeholder.text(f"Creadas {total_created} / {num} reviews...")
+                else:
+                    progress_bar.progress(1.0)
+                    status_placeholder.empty()
+                    st.success(f"Creadas {total_created} reviews.")
+            except requests.exceptions.RequestException as e:
+                status_placeholder.error(f"Error de conexión: {e}")
+                st.error(f"Creadas hasta ahora: {total_created}")
 
 # ---------------- CONSULTAS AVANZADAS ----------------
 elif menu == "Consultas Avanzadas":
@@ -610,35 +677,128 @@ elif menu == "Deletes":
 
 # ---------------- ARCHIVOS (GridFS) ----------------
 elif menu == "Archivos":
+    if "files_upload_response" not in st.session_state:
+        st.session_state.files_upload_response = None
+    if "files_list_data" not in st.session_state:
+        st.session_state.files_list_data = None
+    if "files_download_data" not in st.session_state:
+        st.session_state.files_download_data = None  # {"content": bytes, "filename": str}
+
     st.header("Manejo de Archivos con GridFS")
 
     st.subheader("Subir Archivo")
-    uploaded_file = st.file_uploader("Seleccionar archivo")
-    if uploaded_file and st.button("Subir"):
+    uploaded_file = st.file_uploader("Seleccionar archivo", key="archivos_uploader")
+    if uploaded_file and st.button("Subir", key="archivos_btn_subir"):
         files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
-        r = requests.post(f"{API_URL}/files/upload", files=files)
-        if r.status_code == 200:
-            st.success("Archivo subido")
-            st.json(r.json())
-        else:
-            st.error("Error al subir")
+        try:
+            r = requests.post(f"{API_URL}/files/upload", files=files)
+            if r.status_code == 200:
+                st.session_state.files_upload_response = r.json()
+                st.session_state.files_download_data = None
+                st.success("Archivo subido correctamente.")
+            else:
+                st.session_state.files_upload_response = None
+                st.error(f"Error al subir: {r.status_code} - {r.text[:200] if r.text else ''}")
+        except requests.exceptions.RequestException as e:
+            st.session_state.files_upload_response = None
+            st.error(f"Error de conexión: {e}")
+        st.rerun()
+
+    if st.session_state.files_upload_response:
+        st.success("Última subida exitosa")
+        st.json(st.session_state.files_upload_response)
+        st.caption("Copia el **gridfsId** para usarlo en Descargar, o usa la lista más abajo.")
+        if st.button("Limpiar resultado de subida", key="archivos_btn_limpiar_subida"):
+            st.session_state.files_upload_response = None
+            st.rerun()
 
     st.subheader("Lista de Archivos")
-    if st.button("Cargar Archivos"):
-        r = requests.get(f"{API_URL}/files")
-        if r.status_code == 200:
-            st.dataframe(r.json())
-        else:
-            st.error("Error")
+    if st.button("Cargar Archivos", key="archivos_btn_cargar_lista"):
+        try:
+            r = requests.get(f"{API_URL}/files")
+            if r.status_code == 200:
+                st.session_state.files_list_data = r.json()
+                st.success("Lista cargada.")
+            else:
+                st.session_state.files_list_data = None
+                st.error(f"Error: {r.status_code}")
+        except requests.exceptions.RequestException as e:
+            st.session_state.files_list_data = None
+            st.error(f"Error de conexión: {e}")
+        st.rerun()
+
+    if st.session_state.files_list_data is not None:
+        st.dataframe(st.session_state.files_list_data)
+        if st.button("Limpiar lista", key="archivos_btn_limpiar_lista"):
+            st.session_state.files_list_data = None
+            st.rerun()
 
     st.subheader("Descargar Archivo")
-    gridfs_id = st.text_input("GridFS ID")
-    if st.button("Descargar") and gridfs_id:
-        r = requests.get(f"{API_URL}/files/{gridfs_id}")
-        if r.status_code == 200:
-            st.download_button("Descargar", r.content, file_name="downloaded_file")
+    # Permitir elegir de la lista si está cargada
+    list_options = [""]
+    default_idx = 0
+    if st.session_state.files_list_data and len(st.session_state.files_list_data) > 0:
+        for i, row in enumerate(st.session_state.files_list_data):
+            gid = row.get("gridfsId") or row.get("gridfs_id")
+            fname = row.get("filename", "?")
+            if gid:
+                list_options.append(f"{fname} ({gid})")
+    gridfs_id_from_list = st.selectbox(
+        "O elegir de la lista (si ya cargaste la lista)",
+        options=list_options,
+        index=default_idx,
+        key="archivos_select_file",
+    )
+    if gridfs_id_from_list:
+        m = re.search(r"\(([a-f0-9A-F]{24})\)\s*$", gridfs_id_from_list)
+        if m:
+            gridfs_id_from_list = m.group(1)
+    gridfs_id = st.text_input(
+        "GridFS ID (pega aquí o elige arriba)",
+        value=gridfs_id_from_list if gridfs_id_from_list and len(gridfs_id_from_list) == 24 else "",
+        key="archivos_input_gridfs_id",
+    )
+    if st.button("Obtener archivo", key="archivos_btn_obtener"):
+        id_to_use = (gridfs_id or "").strip() or (gridfs_id_from_list if isinstance(gridfs_id_from_list, str) and len(gridfs_id_from_list) == 24 else "")
+        if not id_to_use:
+            st.warning("Escribe o elige un GridFS ID.")
         else:
-            st.error("Error al descargar")
+            try:
+                r = requests.get(f"{API_URL}/files/{id_to_use}", timeout=60)
+                # Leer todo el cuerpo (el backend puede devolver StreamingResponse)
+                body = r.content if r.content else b"".join(r.iter_content(chunk_size=8192))
+                if r.status_code == 200 and body:
+                    filename = "downloaded_file"
+                    if "Content-Disposition" in r.headers:
+                        m = re.search(r'filename="?([^";\n]+)"?', r.headers["Content-Disposition"])
+                        if m:
+                            filename = m.group(1).strip()
+                    st.session_state.files_download_data = {"content": body, "filename": filename}
+                    st.success(f"Archivo listo: {filename} ({len(body)} bytes)")
+                elif r.status_code == 200:
+                    st.session_state.files_download_data = None
+                    st.warning("El servidor respondió OK pero el archivo está vacío.")
+                else:
+                    st.session_state.files_download_data = None
+                    st.error(f"Error al descargar: {r.status_code}" + (f" - {r.text[:150]}" if r.text else ""))
+            except requests.exceptions.RequestException as e:
+                st.session_state.files_download_data = None
+                st.error(f"Error de conexión: {e}")
+            st.rerun()
+
+    if st.session_state.files_download_data:
+        d = st.session_state.files_download_data
+        st.success(f"Descargar: **{d['filename']}** ({len(d['content'])} bytes)")
+        st.download_button(
+            "Descargar archivo",
+            data=d["content"],
+            file_name=d["filename"],
+            mime="application/octet-stream",
+            key="archivos_btn_descargar",
+        )
+        if st.button("Limpiar descarga", key="archivos_btn_limpiar_descarga"):
+            st.session_state.files_download_data = None
+            st.rerun()
 
 # ---------------- MANEJO DE ARRAYS ----------------
 elif menu == "Manejo de Arrays":

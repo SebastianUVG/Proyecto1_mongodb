@@ -3,8 +3,9 @@ services:
     build:
       context: ./python_backend
       dockerfile: Dockerfile
+    env_file:
+      - ./python_backend/.env
     environment:
-      MONGO_URI: ${MONGO_URI}
       ENFORCE_NO_COLLSCAN: ${ENFORCE_NO_COLLSCAN:-0}
     ports:
       - "8000:8000"
