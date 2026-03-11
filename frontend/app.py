@@ -111,6 +111,98 @@ def _show_simple_analytics(data, title=None):
         st.caption(title)
 
 
+def display_as_cards(data, title_field="_id", cols_per_row=2, show_table=False):
+    """
+    Muestra una lista de documentos como tarjetas visuales expandibles.
+    
+    Args:
+        data: lista de dicts con los documentos
+        title_field: campo que usa como título de la tarjeta
+        cols_per_row: cuántas tarjetas por fila (1-3 recomendado)
+        show_table: si True, muestra también la tabla tradicional debajo
+    """
+    if not data:
+        st.info("Sin datos.")
+        return
+    
+    if show_table:
+        with st.expander("Ver como tabla"):
+            df = pd.DataFrame(data)
+            df = format_dataframe_restaurant(df)
+            st.dataframe(df, use_container_width=True)
+    
+    st.markdown("### Vista de Tarjetas")
+    
+    # Mostrar en filas de tarjetas
+    for i in range(0, len(data), cols_per_row):
+        cols = st.columns(cols_per_row)
+        for col_idx, col in enumerate(cols):
+            if i + col_idx < len(data):
+                doc = data[i + col_idx]
+                with col:
+                    # Obtener el título
+                    title = doc.get(title_field, f"ID: {i + col_idx}")
+                    if isinstance(title, dict):
+                        title = str(title)[:30]
+                    title_str = str(title)[:50]
+                    
+                    # Crear expander como tarjeta
+                    with st.expander(title_str, expanded=False):
+                        # Mostrar todos los campos
+                        for key, val in doc.items():
+                            if key == title_field:
+                                continue
+                            # Formatear valor según tipo
+                            if isinstance(val, (int, float)):
+                                if key in ["totalAmount", "price", "ratingAverage", "avgPrice", "totalRevenue", "maxPrice"]:
+                                    val = _format_currency(val)
+                            elif isinstance(val, str) and key in ["createdAt", "uploadedAt"]:
+                                val = _format_date(val)
+                            elif key == "status":
+                                val = STATUS_ES.get(str(val).lower(), val) if val else ""
+                            elif isinstance(val, list):
+                                if all(isinstance(x, str) for x in val):
+                                    val = ", ".join(val[:5]) + ("..." if len(val) > 5 else "")
+                                else:
+                                    val = f"[{len(val)} elementos]"
+                            elif isinstance(val, dict):
+                                # Formatear dicts especiales como location
+                                if key == "location" and "coordinates" in val:
+                                    coords = val.get("coordinates", [0, 0])
+                                    val = f"Lat: {coords[1]:.4f}, Lon: {coords[0]:.4f}"
+                                else:
+                                    val = str(val)[:60]
+                            
+                            # Mostrar con etiqueta
+                            label = COLUMN_LABELS.get(key, key)
+                            st.markdown(f"**{label}:** {val}")
+
+
+def display_as_simple_cards(data, title_field="_id"):
+    """
+    Versión simple: tarjetas sin expandir, más minimalistas.
+    Ideal para mostrar muchos documentos rápidamente.
+    """
+    if not data:
+        st.info("Sin datos.")
+        return
+    
+    cols = st.columns(min(3, len(data)))
+    for idx, doc in enumerate(data[:3]):  # Máximo 3 en primera fila
+        with cols[idx % 3]:
+            title = doc.get(title_field, "—")
+            if isinstance(title, dict):
+                title = str(title)[:30]
+            title_str = str(title)[:40]
+            
+            st.markdown(f"""
+            <div style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin: 10px 0;">
+            <h4 style="margin: 0; color: #1f77b4;">{title_str}</h4>
+            {"".join(f"<p style='margin: 5px 0; font-size: 12px;'><b>{COLUMN_LABELS.get(k, k)}:</b> {str(v)[:50]}</p>" for k, v in list(doc.items())[:4])}
+            </div>
+            """, unsafe_allow_html=True)
+
+
 st.set_page_config(page_title="Restaurant Dashboard", layout="wide")
 
 st.title("Restaurant System Dashboard")
@@ -156,18 +248,22 @@ if menu == "Restaurantes":
     st.subheader("Lista de Restaurantes")
     limit_rest = st.selectbox("Mostrar hasta", LIMIT_OPTIONS, index=1, key="rest_limit")
     skip_rest = st.number_input("Saltar primeros", min_value=0, value=0, key="rest_skip")
+    view_mode_rest = st.radio("Formato", ["Tarjetas", "Tabla"], horizontal=True, key="rest_view_mode")
     if st.button("Cargar Restaurantes", key="rest_btn_load"):
         response = requests.get(f"{API_URL}/restaurants", params={"limit": limit_rest, "skip": skip_rest})
         if response.status_code == 200:
             data = response.json()
-            df = pd.DataFrame(data)
-            if not df.empty:
-                if "location" in df.columns:
-                    df["location"] = df["location"].apply(
-                        lambda x: f"{x.get('coordinates', [0,0])[1]:.4f}, {x.get('coordinates', [0,0])[0]:.4f}" if isinstance(x, dict) else str(x)
-                    )
-                df = format_dataframe_restaurant(df, date_cols=["createdAt"])
-                st.dataframe(df, use_container_width=True)
+            if data:
+                if view_mode_rest == "Tarjetas":
+                    display_as_cards(data, title_field="name", cols_per_row=2, show_table=True)
+                else:
+                    df = pd.DataFrame(data)
+                    if "location" in df.columns:
+                        df["location"] = df["location"].apply(
+                            lambda x: f"{x.get('coordinates', [0,0])[1]:.4f}, {x.get('coordinates', [0,0])[0]:.4f}" if isinstance(x, dict) else str(x)
+                        )
+                    df = format_dataframe_restaurant(df, date_cols=["createdAt"])
+                    st.dataframe(df, use_container_width=True)
                 st.caption(f"Mostrando {len(data)} registros.")
             else:
                 st.info("No hay restaurantes.")
@@ -213,16 +309,20 @@ elif menu == "Menu Items":
     st.subheader("Lista de Menu Items")
     limit_mi = st.selectbox("Mostrar hasta", LIMIT_OPTIONS, index=1, key="menu_limit")
     skip_mi = st.number_input("Saltar primeros", min_value=0, value=0, key="menu_skip")
+    view_mode_mi = st.radio("Formato", ["Tarjetas", "Tabla"], horizontal=True, key="menu_view_mode")
     if st.button("Cargar Menu Items", key="menu_btn_load"):
         response = requests.get(f"{API_URL}/menu-items", params={"limit": limit_mi, "skip": skip_mi})
         if response.status_code == 200:
             data = response.json()
-            df = pd.DataFrame(data)
-            if not df.empty:
-                if "tags" in df.columns:
-                    df["tags"] = df["tags"].apply(lambda x: ", ".join(x) if isinstance(x, list) else str(x))
-                df = format_dataframe_restaurant(df, currency_cols=["price"], date_cols=[])
-                st.dataframe(df, use_container_width=True)
+            if data:
+                if view_mode_mi == "Tarjetas":
+                    display_as_cards(data, title_field="name", cols_per_row=3, show_table=True)
+                else:
+                    df = pd.DataFrame(data)
+                    if "tags" in df.columns:
+                        df["tags"] = df["tags"].apply(lambda x: ", ".join(x) if isinstance(x, list) else str(x))
+                    df = format_dataframe_restaurant(df, currency_cols=["price"], date_cols=[])
+                    st.dataframe(df, use_container_width=True)
                 st.caption(f"Mostrando {len(data)} registros.")
             else:
                 st.info("No hay ítems de menú.")
@@ -286,16 +386,20 @@ elif menu == "Órdenes":
     st.subheader("Lista de Órdenes")
     limit_ord = st.selectbox("Mostrar hasta", LIMIT_OPTIONS, index=1, key="ord_limit")
     skip_ord = st.number_input("Saltar primeros", min_value=0, value=0, key="ord_skip")
+    view_mode_ord = st.radio("Formato", ["Tarjetas", "Tabla"], horizontal=True, key="ord_view_mode")
     if st.button("Cargar Órdenes", key="ord_btn_load"):
         response = requests.get(f"{API_URL}/orders", params={"limit": limit_ord, "skip": skip_ord})
         if response.status_code == 200:
             orders = response.json()
-            for order in orders:
-                order["items"] = ", ".join([item["name"] for item in order.get("items", [])])
-            df = pd.DataFrame(orders)
-            if not df.empty:
-                df = format_dataframe_restaurant(df, currency_cols=["totalAmount"], date_cols=["createdAt"], status_col="status")
-                st.dataframe(df, use_container_width=True)
+            if orders:
+                if view_mode_ord == "Tarjetas":
+                    display_as_cards(orders, title_field="id", cols_per_row=2, show_table=True)
+                else:
+                    for order in orders:
+                        order["items"] = ", ".join([item["name"] for item in order.get("items", [])])
+                    df = pd.DataFrame(orders)
+                    df = format_dataframe_restaurant(df, currency_cols=["totalAmount"], date_cols=["createdAt"], status_col="status")
+                    st.dataframe(df, use_container_width=True)
                 st.caption(f"Mostrando {len(orders)} registros.")
             else:
                 st.info("No hay órdenes.")
@@ -349,14 +453,18 @@ elif menu == "Reviews":
     st.subheader("Lista de Reviews")
     limit_rev = st.selectbox("Mostrar hasta", LIMIT_OPTIONS, index=1, key="rev_limit")
     skip_rev = st.number_input("Saltar primeros", min_value=0, value=0, key="rev_skip")
+    view_mode_rev = st.radio("Formato", ["Tarjetas", "Tabla"], horizontal=True, key="rev_view_mode")
     if st.button("Cargar Reviews", key="rev_btn_load"):
         response = requests.get(f"{API_URL}/reviews", params={"limit": limit_rev, "skip": skip_rev})
         if response.status_code == 200:
             data = response.json()
-            df = pd.DataFrame(data)
-            if not df.empty:
-                df = format_dataframe_restaurant(df, date_cols=["createdAt"], status_col=None)
-                st.dataframe(df, use_container_width=True)
+            if data:
+                if view_mode_rev == "Tarjetas":
+                    display_as_cards(data, title_field="comment", cols_per_row=2, show_table=True)
+                else:
+                    df = pd.DataFrame(data)
+                    df = format_dataframe_restaurant(df, date_cols=["createdAt"], status_col=None)
+                    st.dataframe(df, use_container_width=True)
                 st.caption(f"Mostrando {len(data)} registros.")
             else:
                 st.info("No hay reseñas.")
@@ -687,6 +795,7 @@ elif menu == "Consultas Avanzadas":
         sort = st.selectbox("Ordenar por", ["createdAt", "-createdAt", "name"], key="adv_rest_sort")
         skip_adv = st.number_input("Saltar primeros", min_value=0, value=0, key="adv_rest_skip")
         limit_adv = st.selectbox("Mostrar hasta", LIMIT_OPTIONS, index=1, key="adv_rest_limit")
+        view_mode_adv_rest = st.radio("Formato", ["Tarjetas", "Tabla"], horizontal=True, key="adv_rest_view")
         if st.button("Consultar", key="adv_rest_btn"):
             params = {"sort": sort, "skip": skip_adv, "limit": limit_adv}
             if category:
@@ -694,14 +803,17 @@ elif menu == "Consultas Avanzadas":
             r = requests.get(f"{API_URL}/restaurants", params=params)
             if r.status_code == 200:
                 data = r.json()
-                df = pd.DataFrame(data)
-                if not df.empty:
-                    if "location" in df.columns:
-                        df["location"] = df["location"].apply(
-                            lambda x: f"{x.get('coordinates', [0,0])[1]:.4f}, {x.get('coordinates', [0,0])[0]:.4f}" if isinstance(x, dict) else str(x)
-                        )
-                    df = format_dataframe_restaurant(df, date_cols=["createdAt"])
-                    st.dataframe(df, use_container_width=True)
+                if data:
+                    if view_mode_adv_rest == "Tarjetas":
+                        display_as_cards(data, title_field="name", cols_per_row=2, show_table=True)
+                    else:
+                        df = pd.DataFrame(data)
+                        if "location" in df.columns:
+                            df["location"] = df["location"].apply(
+                                lambda x: f"{x.get('coordinates', [0,0])[1]:.4f}, {x.get('coordinates', [0,0])[0]:.4f}" if isinstance(x, dict) else str(x)
+                            )
+                        df = format_dataframe_restaurant(df, date_cols=["createdAt"])
+                        st.dataframe(df, use_container_width=True)
                     st.caption(f"Mostrando {len(data)} registros.")
                 else:
                     st.info("No hay resultados.")
@@ -717,6 +829,7 @@ elif menu == "Consultas Avanzadas":
         skip_adv = st.number_input("Saltar primeros", min_value=0, value=0, key="adv_ord_skip")
         limit_adv = st.selectbox("Mostrar hasta", LIMIT_OPTIONS, index=1, key="adv_ord_limit")
         lite = st.checkbox("Vista Lite", key="adv_ord_lite")
+        view_mode_adv_ord = st.radio("Formato", ["Tarjetas", "Tabla"], horizontal=True, key="adv_ord_view")
         if st.button("Consultar", key="adv_ord_btn"):
             params = {"sort": sort, "skip": skip_adv, "limit": limit_adv, "lite": lite}
             if restaurant_id:
@@ -728,10 +841,13 @@ elif menu == "Consultas Avanzadas":
             r = requests.get(f"{API_URL}/orders/enriched/query", params=params)
             if r.status_code == 200:
                 data = r.json()
-                df = pd.DataFrame(data)
-                if not df.empty:
-                    df = format_dataframe_restaurant(df, currency_cols=["totalAmount"], date_cols=["createdAt"], status_col="status")
-                    st.dataframe(df, use_container_width=True)
+                if data:
+                    if view_mode_adv_ord == "Tarjetas":
+                        display_as_cards(data, title_field="id", cols_per_row=2, show_table=True)
+                    else:
+                        df = pd.DataFrame(data)
+                        df = format_dataframe_restaurant(df, currency_cols=["totalAmount"], date_cols=["createdAt"], status_col="status")
+                        st.dataframe(df, use_container_width=True)
                     st.caption(f"Mostrando {len(data)} registros.")
                 else:
                     st.info("No hay resultados.")
@@ -743,17 +859,21 @@ elif menu == "Consultas Avanzadas":
         tag = st.text_input("Tag", key="adv_tag_input")
         skip_adv = st.number_input("Saltar primeros", min_value=0, value=0, key="adv_tag_skip")
         limit_adv = st.selectbox("Mostrar hasta", LIMIT_OPTIONS, index=1, key="adv_tag_limit")
+        view_mode_adv_tag = st.radio("Formato", ["Tarjetas", "Tabla"], horizontal=True, key="adv_tag_view")
         if st.button("Consultar", key="adv_tag_btn") and tag:
             params = {"skip": skip_adv, "limit": limit_adv}
             r = requests.get(f"{API_URL}/menu-items/by-tag", params={"tag": tag, **params})
             if r.status_code == 200:
                 data = r.json()
-                df = pd.DataFrame(data)
-                if not df.empty:
-                    if "tags" in df.columns:
-                        df["tags"] = df["tags"].apply(lambda x: ", ".join(x) if isinstance(x, list) else str(x))
-                    df = format_dataframe_restaurant(df, currency_cols=["price"])
-                    st.dataframe(df, use_container_width=True)
+                if data:
+                    if view_mode_adv_tag == "Tarjetas":
+                        display_as_cards(data, title_field="name", cols_per_row=3, show_table=True)
+                    else:
+                        df = pd.DataFrame(data)
+                        if "tags" in df.columns:
+                            df["tags"] = df["tags"].apply(lambda x: ", ".join(x) if isinstance(x, list) else str(x))
+                        df = format_dataframe_restaurant(df, currency_cols=["price"])
+                        st.dataframe(df, use_container_width=True)
                     st.caption(f"Mostrando {len(data)} registros.")
                 else:
                     st.info("No hay resultados.")
