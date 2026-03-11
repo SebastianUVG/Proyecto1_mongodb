@@ -505,12 +505,57 @@ elif menu == "Updates":
         patch = st.text_area("Patch JSON", value='{"description": "Nueva descripción"}')
         if st.button("Actualizar") and restaurant_id:
             try:
-                patch_data = eval(patch)  # Simple eval, en producción usar json.loads
+                patch_data = eval(patch)
                 r = requests.patch(f"{API_URL}/restaurants/{restaurant_id}", json=patch_data)
                 if r.status_code == 200:
                     st.success("Actualizado")
                 else:
                     st.error("Error")
+            except:
+                st.error("JSON inválido")
+
+    elif sub_menu == "Menu Items":
+        st.subheader("Actualizar Menu Item")
+        item_id = st.text_input("Menu Item ID")
+        patch = st.text_area("Patch JSON", value='{"price": 50}', key="menu_patch")
+        if st.button("Actualizar Menu Item") and item_id:
+            try:
+                patch_data = eval(patch)
+                r = requests.patch(f"{API_URL}/menu-items/{item_id}", json=patch_data)
+                if r.status_code == 200:
+                    st.success(f"Menu Item actualizado - Modified: {r.json().get('modified', 0)}")
+                else:
+                    st.error(f"Error: {r.text}")
+            except:
+                st.error("JSON inválido")
+
+    elif sub_menu == "Órdenes":
+        st.subheader("Actualizar Orden")
+        order_id = st.text_input("Order ID")
+        patch = st.text_area("Patch JSON", value='{"status": "completed"}', key="order_patch")
+        if st.button("Actualizar Orden") and order_id:
+            try:
+                patch_data = eval(patch)
+                r = requests.patch(f"{API_URL}/orders/{order_id}", json=patch_data)
+                if r.status_code == 200:
+                    st.success(f"Orden actualizada - Modified: {r.json().get('modified', 0)}")
+                else:
+                    st.error(f"Error: {r.text}")
+            except:
+                st.error("JSON inválido")
+
+    elif sub_menu == "Reviews":
+        st.subheader("Actualizar Review")
+        review_id = st.text_input("Review ID")
+        patch = st.text_area("Patch JSON", value='{"rating": 4, "comment": "Actualizado"}', key="review_patch")
+        if st.button("Actualizar Review") and review_id:
+            try:
+                patch_data = eval(patch)
+                r = requests.patch(f"{API_URL}/reviews/{review_id}", json=patch_data)
+                if r.status_code == 200:
+                    st.success(f"Review actualizada - Modified: {r.json().get('modified', 0)}")
+                else:
+                    st.error(f"Error: {r.text}")
             except:
                 st.error("JSON inválido")
 
